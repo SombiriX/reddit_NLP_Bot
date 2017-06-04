@@ -1,5 +1,6 @@
 '''
-This program pulls comments from reddit for further analysis using natural language processing
+This program pulls comments from reddit for further analysis using natural
+language processing
 Author Sombiri Enwemeka
 '''
 import sys
@@ -84,10 +85,11 @@ def get_reddit_comments(args):
     '''
     # Check whether to update comment data
     subm_data = []
+    num_entries = 0
     if os.path.isfile(args.o):
         f = open(args.o, "r")
         subm_data = json.loads(f.read())
-        if not subm_data[-1] is args.n:
+        if not subm_data[-1] is args.n or isinstance(subm_data[-2], int):
             del(subm_data)
             subm_data = get_reddit_comments(args)
         f.close()
@@ -112,6 +114,7 @@ def get_reddit_comments(args):
     for submission in subreddit.top(time_filter='all', limit=args.n):
         submission.comments.replace_more(limit=0)
         sub_comments = []
+        num_entries += 1
         for comment in submission.comments.list():
             c_entry = {
                 "num_reports": comment.num_reports,
@@ -122,6 +125,7 @@ def get_reddit_comments(args):
                 "depth": int(comment.depth)
             }
             sub_comments.append(c_entry)
+            num_entries += 1
 
         subm_data.append({
             "title": norm(submission.title),
@@ -134,6 +138,7 @@ def get_reddit_comments(args):
             "comments": sub_comments
         })
     # Write comment data to file
+    subm_data.append(num_entries)
     subm_data.append(args.n)
     with open(args.o, "w") as f:
         f.write(json.dumps(subm_data))
@@ -146,17 +151,34 @@ def main():
     '''
 
     parser = argparse.ArgumentParser(description='Analyze reddit comments')
-    #parser.add_argument('-r', action='store_true', help='refresh site data')
-    parser.add_argument('--subreddit', default='the_donald', help='Subreddit to examine')
-    parser.add_argument('-n', default=10, help='Number of posts to examine')
-    parser.add_argument('-o', default='../commentData.json', help='Output file name')
-    parser.add_argument('-k', default='../apiKeys.json', help='Path to API keys file')
+    parser.add_argument(
+        '--subreddit',
+        default='the_donald',
+        help='Subreddit to examine')
+    parser.add_argument(
+        '-n',
+        default=10,
+        help='Number of posts to examine')
+    parser.add_argument(
+        '-o',
+        default='../commentData.json',
+        help='Output file name')
+    parser.add_argument(
+        '-k',
+        default='../apiKeys.json',
+        help='Path to API keys file')
     args = parser.parse_args()
 
     os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = '../redditNLP.json'
     start_time = time.time()
 
     subm_data = get_reddit_comments(args)
+
+    print "Getting NLP analysis for %s entries. \
+    This will take between %s and %s" % (
+        subm_data[-2],
+        str(timedelta(seconds=subm_data[-2] * 0.8)),
+        str(timedelta(seconds=subm_data[-2] * 1.8)))
 
     # Add natural language processing results
     nlp_calls = 0
@@ -172,7 +194,8 @@ def main():
                 nlp_calls += 1
                 x = time.time()
                 subm['entities'] = get_entity_sentiment(subm['selftext'])
-                print "Called NLP Service. %s total calls. Call took %0.3fs." % (nlp_calls, time.time()-x)
+                print "Called NLP Service. %s total calls. \
+                Call took %0.3fs." % (nlp_calls, time.time()-x)
 
                 aggregate += subm['selftext']
 
@@ -180,7 +203,8 @@ def main():
                     nlp_calls += 1
                     x = time.time()
                     c['entities'] = get_entity_sentiment(c['body'])
-                    print "Called NLP Service. %s total calls. Call took %0.3fs." % (nlp_calls, time.time()-x)
+                    print "Called NLP Service. %s total calls. \
+                    Call took %0.3fs." % (nlp_calls, time.time()-x)
 
                     aggregate += c['body']
 
