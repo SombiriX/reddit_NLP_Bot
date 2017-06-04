@@ -8,6 +8,7 @@ import praw
 import json
 import argparse
 import time
+from datetime import timedelta
 from unicodedata import normalize
 from operator import itemgetter
 from google.cloud.gapic.language.v1beta2 import enums
@@ -153,11 +154,13 @@ def main():
     args = parser.parse_args()
 
     os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = '../redditNLP.json'
+    start_time = time.time()
 
     subm_data = get_reddit_comments(args)
 
     # Add natural language processing results
     nlp_calls = 0
+    outages = 0
     for subm in subm_data:
         # Skip validation entry
         if isinstance(subm, int):
@@ -187,15 +190,19 @@ def main():
             except errors.RetryError:
                 print "The network is acting up again, let's give it a moment"
                 time.sleep(30)
+                outages += 1
                 continue
             break
-
-    print "Made %s NLP calls" % nlp_calls
-    del os.environ['GOOGLE_APPLICATION_CREDENTIALS']
 
     # Write complete dataset to file
     with open(args.o, "w") as f:
         f.write(json.dumps(subm_data))
+
+    # Output some run information
+    print "Made %s NLP calls " % nlp_calls
+    print "Runtime: %s" % str(timedelta(seconds=time.time()-start_time))
+    print "There were %s network outages during this run" % outages
+    del os.environ['GOOGLE_APPLICATION_CREDENTIALS']
     exit()
 
 
