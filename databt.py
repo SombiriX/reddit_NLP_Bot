@@ -89,11 +89,9 @@ def get_reddit_comments(args):
     if os.path.isfile(args.o):
         f = open(args.o, "r")
         subm_data = json.loads(f.read())
-        if not subm_data[-1] is args.n or isinstance(subm_data[-2], int):
-            del(subm_data)
-            subm_data = get_reddit_comments(args)
-        f.close()
-        return subm_data
+        if subm_data[-1] is args.n and isinstance(subm_data[-2], int):
+            f.close()
+            return subm_data
 
     api_keys = None
     try:
@@ -115,6 +113,7 @@ def get_reddit_comments(args):
         submission.comments.replace_more(limit=0)
         sub_comments = []
         num_entries += 1
+        aggregate = ''
         for comment in submission.comments.list():
             c_entry = {
                 "num_reports": comment.num_reports,
@@ -124,6 +123,7 @@ def get_reddit_comments(args):
                 "downs": int(comment.downs),
                 "depth": int(comment.depth)
             }
+            aggregate += c_entry['body'] + '\r\n'
             sub_comments.append(c_entry)
             num_entries += 1
 
@@ -135,7 +135,10 @@ def get_reddit_comments(args):
             "author": test_redditor(submission),
             "num_comments": int(submission.num_comments),
             "selftext": norm(submission.selftext),
-            "comments": sub_comments
+            "comments": sub_comments,
+            "aggregate": norm(submission.title)
+            + '\r\n' + norm(submission.selftext)
+            + '\r\n' + aggregate
         })
     # Write comment data to file
     subm_data.append(num_entries)
@@ -174,47 +177,31 @@ def main():
 
     subm_data = get_reddit_comments(args)
 
-    print "Getting NLP analysis for %s entries. \
-    This will take between %s and %s" % (
-        subm_data[-2],
-        str(timedelta(seconds=subm_data[-2] * 0.8)),
-        str(timedelta(seconds=subm_data[-2] * 1.8)))
-
     # Add natural language processing results
     nlp_calls = 0
     outages = 0
     for subm in subm_data:
-        # Skip validation entry
-        if isinstance(subm, int):
-            break
-        # Try each request until it works
         while True:
             try:
-                aggregate = ''
-                nlp_calls += 1
+                # Skip validation entry
+                if isinstance(subm, int):
+                    break
+
                 x = time.time()
-                subm['entities'] = get_entity_sentiment(subm['selftext'])
-                print "Called NLP Service. %s total calls. \
-                Call took %0.3fs." % (nlp_calls, time.time()-x)
-
-                aggregate += subm['selftext']
-
-                for c in subm['comments']:
-                    nlp_calls += 1
-                    x = time.time()
-                    c['entities'] = get_entity_sentiment(c['body'])
-                    print "Called NLP Service. %s total calls. \
-                    Call took %0.3fs." % (nlp_calls, time.time()-x)
-
-                    aggregate += c['body']
-
-                subm['agg_entities'] = get_entity_sentiment(aggregate)
+                subm['ents_self'] = get_entity_sentiment(subm['selftext'])
                 nlp_calls += 1
-                print "Called NLP Service. %s total calls." % nlp_calls
+                print "Called NLP Service. %s total calls. " \
+                    "Call took %0.3fs." % (nlp_calls, time.time()-x)
+                subm['ents_agg'] = get_entity_sentiment(subm['aggregate'])
+                nlp_calls += 1
+                print "Called NLP Service. %s total calls. " \
+                    "Call took %0.3fs." % (nlp_calls, time.time()-x)
             except errors.RetryError:
-                print "The network is acting up again, let's give it a moment"
-                time.sleep(30)
                 outages += 1
+                nlp_calls -= 1
+                print "The network is acting up again, let's give it a moment"
+                print "%s outages so far." % outages
+                time.sleep(30)
                 continue
             break
 
